@@ -1,18 +1,27 @@
-import { MongoClient, Db } from "mongodb";
+import { MongoClient } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
 if (!uri) throw new Error("Missing MONGODB_URI");
 
-const client = new MongoClient(uri);
+let client: MongoClient;
+let clientPromise: Promise<MongoClient>;
 
-const dbName = "better-auth";
+// Handle HMR in development
+if (process.env.NODE_ENV === "development") {
+  const globalWithMongo = global as typeof globalThis & {
+    _mongoClientPromise?: Promise<MongoClient>;
+  };
 
-let db: Db;
-
-export async function connectToDatabase(): Promise<Db> {
-  if (!db) {
-    await client.connect();
-    db = client.db(dbName);
+  if (!globalWithMongo._mongoClientPromise) {
+    client = new MongoClient(uri);
+    globalWithMongo._mongoClientPromise = client.connect();
   }
-  return db;
+  clientPromise = globalWithMongo._mongoClientPromise;
+} else {
+  client = new MongoClient(uri);
+  clientPromise = client.connect();
+}
+
+export function connectToDatabase(): Promise<MongoClient> {
+  return clientPromise;
 }
