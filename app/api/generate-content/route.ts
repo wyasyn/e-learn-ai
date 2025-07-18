@@ -1,9 +1,9 @@
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest, NextResponse } from "next/server";
-import { DatabaseService } from "@/lib/database";
 import { ObjectId } from "mongodb";
 import { Course, WeeklyContent } from "@/models/Course";
+import { DatabaseService } from "@/services/database";
 
 export async function POST(request: NextRequest) {
   try {

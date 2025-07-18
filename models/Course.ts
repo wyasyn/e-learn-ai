@@ -24,5 +24,5 @@ export interface Course {
   status: "active" | "draft";
   createdAt: Date;
   updatedAt: Date;
-  instructorId: string; // Add instructor/user ID
+  instructorId: string;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import type React from "react";
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,9 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Upload, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface WeeklyContent {
   week: number;
@@ -33,6 +33,7 @@ interface WeeklyContent {
 
 export default function CreateCourse() {
   const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     code: "",
@@ -64,7 +65,13 @@ export default function CreateCourse() {
   };
 
   const removeWeek = (index: number) => {
-    setWeeklyContent((prev) => prev.filter((_, i) => i !== index));
+    if (weeklyContent.length > 1) {
+      setWeeklyContent((prev) =>
+        prev
+          .filter((_, i) => i !== index)
+          .map((week, i) => ({ ...week, week: i + 1 }))
+      );
+    }
   };
 
   const updateWeeklyContent = (
@@ -79,42 +86,92 @@ export default function CreateCourse() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setUploadedFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+      const newFiles = Array.from(e.target.files);
+      setUploadedFiles((prev) => [...prev, ...newFiles]);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const removeFile = (index: number) => {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
-    const newCourse = {
-      id: Date.now().toString(),
-      ...formData,
-      credits: Number.parseInt(formData.credits),
-      weeklyContent,
-      uploadedFiles: uploadedFiles.map((f) => f.name),
-      students: 0,
-      status: "draft" as const,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      // Validate form data
+      if (
+        !formData.name ||
+        !formData.code ||
+        !formData.level ||
+        !formData.semester
+      ) {
+        toast.error("Please fill in all required fields");
+        return;
+      }
 
-    // Save to localStorage
-    const existingCourses = JSON.parse(localStorage.getItem("courses") || "[]");
-    localStorage.setItem(
-      "courses",
-      JSON.stringify([...existingCourses, newCourse])
-    );
+      if (weeklyContent.some((week) => !week.topics.trim())) {
+        toast.error("Please provide topics for all weeks");
+        return;
+      }
 
-    router.push("/dashboard");
+      // Create FormData for file upload
+      const formDataToSend = new FormData();
+
+      // Add course data
+      const courseData = {
+        ...formData,
+        credits: parseInt(formData.credits),
+        weeklyContent,
+        status: "draft",
+        students: 0,
+      };
+
+      formDataToSend.append("courseData", JSON.stringify(courseData));
+
+      // Add files
+      uploadedFiles.forEach((file) => {
+        formDataToSend.append("files", file);
+      });
+
+      const response = await fetch("/api/courses", {
+        method: "POST",
+        headers: {
+          "user-id": "default-instructor", // Replace with actual user ID from auth
+        },
+        body: formDataToSend,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to create course");
+      }
+
+      const result = await response.json();
+
+      toast.success("Course created successfully!");
+      router.push(`/course/${result.course._id}`);
+    } catch (error) {
+      console.error("Error creating course:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to create course. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen ">
       {/* Header */}
-      <header className=" shadow-sm border-b">
+      <header className="  border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-16">
             <Link href="/dashboard">
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" disabled={isSubmitting}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Dashboard
               </Button>
@@ -144,32 +201,35 @@ export default function CreateCourse() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Course Name</Label>
+                  <Label htmlFor="name">Course Name *</Label>
                   <Input
                     id="name"
                     placeholder="e.g., Introduction to Computer Science"
                     value={formData.name}
                     onChange={(e) => handleInputChange("name", e.target.value)}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="code">Course Code</Label>
+                  <Label htmlFor="code">Course Code *</Label>
                   <Input
                     id="code"
                     placeholder="e.g., CS101"
                     value={formData.code}
                     onChange={(e) => handleInputChange("code", e.target.value)}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="level">Level</Label>
+                  <Label htmlFor="level">Level *</Label>
                   <Select
                     onValueChange={(value) => handleInputChange("level", value)}
+                    disabled={isSubmitting}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select level" />
@@ -185,11 +245,12 @@ export default function CreateCourse() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="semester">Semester</Label>
+                  <Label htmlFor="semester">Semester *</Label>
                   <Select
                     onValueChange={(value) =>
                       handleInputChange("semester", value)
                     }
+                    disabled={isSubmitting}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select semester" />
@@ -203,16 +264,19 @@ export default function CreateCourse() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="credits">Credit Units</Label>
+                  <Label htmlFor="credits">Credit Units *</Label>
                   <Input
                     id="credits"
                     type="number"
                     placeholder="3"
+                    min="1"
+                    max="10"
                     value={formData.credits}
                     onChange={(e) =>
                       handleInputChange("credits", e.target.value)
                     }
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -230,7 +294,7 @@ export default function CreateCourse() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="description">Brief Course Description</Label>
+                <Label htmlFor="description">Brief Course Description *</Label>
                 <Textarea
                   id="description"
                   placeholder="Provide a brief overview of what this course covers..."
@@ -239,11 +303,13 @@ export default function CreateCourse() {
                     handleInputChange("description", e.target.value)
                   }
                   required
+                  disabled={isSubmitting}
+                  rows={3}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="objectives">Course Objectives</Label>
+                <Label htmlFor="objectives">Course Objectives *</Label>
                 <Textarea
                   id="objectives"
                   placeholder="List the main objectives students will achieve..."
@@ -252,11 +318,13 @@ export default function CreateCourse() {
                     handleInputChange("objectives", e.target.value)
                   }
                   required
+                  disabled={isSubmitting}
+                  rows={4}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="learningOutcomes">Learning Outcomes</Label>
+                <Label htmlFor="learningOutcomes">Learning Outcomes *</Label>
                 <Textarea
                   id="learningOutcomes"
                   placeholder="Describe what students will be able to do after completing this course..."
@@ -265,6 +333,8 @@ export default function CreateCourse() {
                     handleInputChange("learningOutcomes", e.target.value)
                   }
                   required
+                  disabled={isSubmitting}
+                  rows={4}
                 />
               </div>
 
@@ -277,11 +347,13 @@ export default function CreateCourse() {
                   onChange={(e) =>
                     handleInputChange("requirements", e.target.value)
                   }
+                  disabled={isSubmitting}
+                  rows={3}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="assessmentMode">Mode of Assessment</Label>
+                <Label htmlFor="assessmentMode">Mode of Assessment *</Label>
                 <Textarea
                   id="assessmentMode"
                   placeholder="Describe how students will be assessed (exams, assignments, projects, etc.)..."
@@ -290,6 +362,8 @@ export default function CreateCourse() {
                     handleInputChange("assessmentMode", e.target.value)
                   }
                   required
+                  disabled={isSubmitting}
+                  rows={3}
                 />
               </div>
             </CardContent>
@@ -314,6 +388,7 @@ export default function CreateCourse() {
                         variant="ghost"
                         size="sm"
                         onClick={() => removeWeek(index)}
+                        disabled={isSubmitting}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -321,7 +396,7 @@ export default function CreateCourse() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Topics to Cover</Label>
+                    <Label>Topics to Cover *</Label>
                     <Textarea
                       placeholder="List the main topics and concepts for this week..."
                       value={week.topics}
@@ -329,6 +404,8 @@ export default function CreateCourse() {
                         updateWeeklyContent(index, "topics", e.target.value)
                       }
                       required
+                      disabled={isSubmitting}
+                      rows={3}
                     />
                   </div>
 
@@ -344,12 +421,19 @@ export default function CreateCourse() {
                           e.target.value
                         )
                       }
+                      disabled={isSubmitting}
+                      rows={3}
                     />
                   </div>
                 </div>
               ))}
 
-              <Button type="button" variant="outline" onClick={addWeek}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={addWeek}
+                disabled={isSubmitting}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Another Week
               </Button>
@@ -367,7 +451,7 @@ export default function CreateCourse() {
             </CardHeader>
             <CardContent>
               <div className="border-2 border-dashed  rounded-lg p-6 text-center">
-                <Upload className="h-8 w-8 mx-auto mb-2" />
+                <Upload className="h-8 w-8 mx-auto mb-2 " />
                 <p className="text-sm  mb-2">
                   Upload PowerPoint presentations, PDFs, quizzes, or other
                   course materials
@@ -380,9 +464,15 @@ export default function CreateCourse() {
                   onChange={handleFileUpload}
                   className="hidden"
                   id="file-upload"
+                  disabled={isSubmitting}
                 />
 
-                <Button type="button" variant="outline" asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  asChild
+                  disabled={isSubmitting}
+                >
                   <Label htmlFor="file-upload" className="cursor-pointer">
                     Choose Files
                   </Label>
@@ -392,11 +482,25 @@ export default function CreateCourse() {
               {uploadedFiles.length > 0 && (
                 <div className="mt-4">
                   <h4 className="font-medium mb-2">Uploaded Files:</h4>
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {uploadedFiles.map((file, index) => (
-                      <li key={index} className="text-sm  flex items-center">
-                        <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                        {file.name}
+                      <li
+                        key={index}
+                        className="text-sm  flex items-center justify-between p-2  rounded"
+                      >
+                        <div className="flex items-center">
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          {file.name}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFile(index)}
+                          disabled={isSubmitting}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </li>
                     ))}
                   </ul>
@@ -408,11 +512,20 @@ export default function CreateCourse() {
           {/* Submit */}
           <div className="flex justify-end space-x-4">
             <Link href="/dashboard">
-              <Button type="button" variant="outline">
+              <Button type="button" variant="outline" disabled={isSubmitting}>
                 Cancel
               </Button>
             </Link>
-            <Button type="submit">Create Course & Generate AI Content</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Course...
+                </>
+              ) : (
+                "Create Course & Generate AI Content"
+              )}
+            </Button>
           </div>
         </form>
       </div>

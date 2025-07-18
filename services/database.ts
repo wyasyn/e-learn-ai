@@ -1,7 +1,7 @@
 import { Course } from "@/models/Course";
 import { ObjectId, Filter } from "mongodb";
 import { GeneratedContent } from "@/models/GeneratedContent";
-import { connectToDatabase } from "./db";
+import { connectToDatabase } from "@/lib/db";
 
 const clientPromise = connectToDatabase();
 
@@ -19,7 +19,7 @@ export class DatabaseService {
     courseData: Omit<Course, "_id" | "createdAt" | "updatedAt">
   ): Promise<Course> {
     const client = await clientPromise;
-    const db = client.db("study-buddy"); // Use consistent database name
+    const db = client.db("study-buddy");
 
     const course: Course = {
       ...courseData,
