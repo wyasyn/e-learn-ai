@@ -440,7 +440,7 @@ export default function CourseContent() {
   }
 
   // Add safety checks for weeklyContent
-  if (!course.weeklyContent || !Array.isArray(course.weeklyContent)) {
+  if (!course?.weeklyContent || !Array.isArray(course.weeklyContent)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
