@@ -1,18 +1,79 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { Course, WeeklyContent } from "@/models/Course";
 import { DatabaseService } from "@/services/database";
+import { auth } from "@/lib/auth";
+import { v2 as cloudinary } from "cloudinary";
+import { Readable } from "stream";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+async function uploadToCloudinary(
+  file: File,
+  courseId: string
+): Promise<string> {
+  try {
+    // Convert File to Buffer
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
+    return new Promise((resolve, reject) => {
+      // Create a readable stream from buffer
+      const stream = Readable.from(buffer);
+
+      // Upload to Cloudinary
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: "auto", // Automatically detect file type
+          folder: `courses/${courseId}`, // Organize files in folders by course
+          public_id: `${Date.now()}_${file.name.replace(/\.[^/.]+$/, "")}`, // Remove extension, Cloudinary will add it back
+          use_filename: true,
+          unique_filename: false,
+        },
+        (error, result) => {
+          if (error) {
+            console.error("Cloudinary upload error:", error);
+            reject(error);
+          } else {
+            resolve(result!.secure_url);
+          }
+        }
+      );
+
+      stream.pipe(uploadStream);
+    });
+  } catch (error) {
+    console.error("Error preparing file for upload:", error);
+    throw new Error("Failed to prepare file for upload");
+  }
+}
+
+// async function deleteFromCloudinary(publicId: string): Promise<void> {
+//   try {
+//     await cloudinary.uploader.destroy(publicId);
+//   } catch (error) {
+//     console.error("Error deleting from Cloudinary:", error);
+//   }
+// }
 
 export async function POST(request: NextRequest) {
   try {
-    const instructorId = request.headers.get("user-id");
+    // Authenticate user
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
 
-    if (!instructorId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 401 }
-      );
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const instructorId = session.user.id;
+
+    // Parse form data
     const formData = await request.formData();
     const courseDataString = formData.get("courseData") as string;
 
@@ -65,11 +126,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Handle file uploads (optional - you can expand this based on your needs)
-    const files = formData.getAll("files") as File[];
-    const uploadedFileNames = files.map((file) => file.name);
-
-    // Prepare course data for database
+    // First create the course to get an ID for file organization
     const courseForDb: Omit<Course, "_id" | "createdAt" | "updatedAt"> = {
       name: courseData.name,
       code: courseData.code,
@@ -82,7 +139,7 @@ export async function POST(request: NextRequest) {
       requirements: courseData.requirements || "",
       assessmentMode: courseData.assessmentMode,
       weeklyContent: courseData.weeklyContent,
-      uploadedFiles: uploadedFileNames,
+      uploadedFiles: [],
       instructorId,
       students: courseData.students || 0,
       status: courseData.status || "draft",
@@ -92,7 +149,6 @@ export async function POST(request: NextRequest) {
     const db = DatabaseService.getInstance();
     const course = await db.createCourse(courseForDb);
 
-    // Check if course was created successfully and has an ID
     if (!course || !course._id) {
       return NextResponse.json(
         { error: "Failed to create course" },
@@ -100,29 +156,105 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // TODO: Process uploaded files - save to file system or cloud storage
-    // For now, we just store the file names
+    // Handle file uploads to Cloudinary
+    const files = formData.getAll("files") as File[];
+    const uploadedFileUrls: string[] = [];
+    const uploadErrors: string[] = [];
+
     if (files.length > 0) {
-      console.log(`${files.length} files uploaded for course ${course._id}`);
-      // You can implement file processing here:
-      // - Save files to local storage or cloud storage
-      // - Process PowerPoint files to extract content
-      // - Parse PDFs for text content
-      // - Store file metadata in database
+      console.log(`Processing ${files.length} files for course ${course._id}`);
+
+      // Validate file types and sizes
+      const allowedTypes = [
+        "application/vnd.ms-powerpoint", // .ppt
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+        "application/pdf",
+        "application/msword", // .doc
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+        "text/plain",
+      ];
+
+      const maxFileSize = 10 * 1024 * 1024; // 10MB limit
+
+      for (const file of files) {
+        try {
+          // Validate file type
+          if (
+            !allowedTypes.includes(file.type) &&
+            !file.name.match(/\.(ppt|pptx|pdf|doc|docx|txt)$/i)
+          ) {
+            uploadErrors.push(`${file.name}: Unsupported file type`);
+            continue;
+          }
+
+          // Validate file size
+          if (file.size > maxFileSize) {
+            uploadErrors.push(`${file.name}: File too large (max 10MB)`);
+            continue;
+          }
+
+          // Upload to Cloudinary
+          const uploadedUrl = await uploadToCloudinary(
+            file,
+            course._id.toString()
+          );
+          uploadedFileUrls.push(uploadedUrl);
+
+          console.log(`Successfully uploaded: ${file.name} -> ${uploadedUrl}`);
+        } catch (error) {
+          console.error(`Error uploading ${file.name}:`, error);
+          uploadErrors.push(`${file.name}: Upload failed`);
+        }
+      }
+
+      // Update course with uploaded file URLs
+      if (uploadedFileUrls.length > 0) {
+        try {
+          await db.updateCourse(course._id.toString(), {
+            uploadedFiles: uploadedFileUrls,
+          });
+        } catch (error) {
+          console.error("Error updating course with file URLs:", error);
+          // Don't fail the entire request, just log the error
+        }
+      }
     }
 
-    return NextResponse.json(
-      {
-        message: "Course created successfully",
-        course: {
-          ...course,
-          _id: course._id.toString(),
-        },
+    // Prepare response
+    const response: any = {
+      message: "Course created successfully",
+      course: {
+        ...course,
+        _id: course._id.toString(),
+        uploadedFiles: uploadedFileUrls,
       },
-      { status: 201 }
-    );
+    };
+
+    // Include upload errors in response if any
+    if (uploadErrors.length > 0) {
+      response.uploadErrors = uploadErrors;
+      response.message += ` (${uploadErrors.length} file(s) failed to upload)`;
+    }
+
+    if (uploadedFileUrls.length > 0) {
+      response.message += ` (${uploadedFileUrls.length} file(s) uploaded successfully)`;
+    }
+
+    return NextResponse.json(response, { status: 201 });
   } catch (error) {
     console.error("Error creating course:", error);
+
+    // If it's a Cloudinary error, provide more specific error message
+    if (error instanceof Error && error.message.includes("Cloudinary")) {
+      return NextResponse.json(
+        {
+          error:
+            "File upload service is currently unavailable. Please try again later.",
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -132,29 +264,29 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const instructorId = request.headers.get("user-id");
+    // Get the session to identify the user
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
 
-    if (!instructorId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 401 }
-      );
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const db = DatabaseService.getInstance();
-    const courses = await db.getCoursesByInstructor(instructorId);
+    const dbService = DatabaseService.getInstance();
+    const courses = await dbService.getCoursesByInstructor(session.user.id);
 
-    // Convert ObjectIds to strings for JSON response
-    const coursesWithStringIds = courses.map((course) => ({
+    // Convert ObjectId to string for frontend consumption
+    const coursesWithStringId = courses.map((course) => ({
       ...course,
-      _id: course._id?.toString() || "", // Handle potential undefined _id
+      _id: course._id?.toString() || "",
     }));
 
-    return NextResponse.json({ courses: coursesWithStringIds });
+    return NextResponse.json({ courses: coursesWithStringId });
   } catch (error) {
     console.error("Error fetching courses:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to fetch courses" },
       { status: 500 }
     );
   }

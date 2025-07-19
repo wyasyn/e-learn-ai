@@ -19,9 +19,11 @@ import {
   Target,
   CheckCircle,
   FileText,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 
 interface Course {
   id: string;
@@ -49,18 +51,122 @@ interface Course {
 export default function CourseDetails() {
   const params = useParams();
   const [course, setCourse] = useState<Course | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const session = authClient.useSession();
+  const user = session.data?.user;
 
   useEffect(() => {
-    const courses = JSON.parse(localStorage.getItem("courses") || "[]");
-    const foundCourse = courses.find((c: Course) => c.id === params.id);
-    setCourse(foundCourse);
-  }, [params.id]);
+    const fetchCourse = async () => {
+      if (!user) {
+        setError("Authentication required");
+        setLoading(false);
+        return;
+      }
 
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/courses/${params.id}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            setError("Course not found");
+          } else if (response.status === 401) {
+            setError("Unauthorized access");
+          } else {
+            setError("Failed to fetch course");
+          }
+          return;
+        }
+
+        const data = await response.json();
+        setCourse(data.course);
+        setError(null);
+      } catch (err) {
+        console.error("Error fetching course:", err);
+        setError("Failed to load course data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (session.isPending) {
+      // Wait for session to load
+      return;
+    }
+
+    fetchCourse();
+  }, [params.id, user, session.isPending]);
+
+  // Show loading state while session is pending
+  if (session.isPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show authentication required message
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
+          <p className="text-gray-600 mb-4">
+            Please sign in to view this course.
+          </p>
+          <Link href="/auth/signin">
+            <Button>Sign In</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state while fetching course
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-lg">Loading course...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2">Error</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Link href="/dashboard">
+            <Button>Back to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Show course not found state
   if (!course) {
     return (
-      <div className="min-h-screen  flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold  mb-2">Course not found</h2>
+          <h2 className="text-2xl font-bold mb-2">Course not found</h2>
           <Link href="/dashboard">
             <Button>Back to Dashboard</Button>
           </Link>
@@ -70,9 +176,9 @@ export default function CourseDetails() {
   }
 
   return (
-    <div className="min-h-screen ">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className=" shadow-sm border-b">
+      <header className="shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
@@ -83,8 +189,8 @@ export default function CourseDetails() {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-xl font-semibold ">{course.name}</h1>
-                <p className="text-sm ">{course.code}</p>
+                <h1 className="text-xl font-semibold">{course.name}</h1>
+                <p className="text-sm">{course.code}</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -108,8 +214,8 @@ export default function CourseDetails() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium ">Students</p>
-                  <p className="text-2xl font-bold ">{course.students}</p>
+                  <p className="text-sm font-medium">Students</p>
+                  <p className="text-2xl font-bold">{course.students}</p>
                 </div>
                 <Users className="h-8 w-8 text-blue-600" />
               </div>
@@ -120,8 +226,8 @@ export default function CourseDetails() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium ">Credits</p>
-                  <p className="text-2xl font-bold ">{course.credits}</p>
+                  <p className="text-sm font-medium">Credits</p>
+                  <p className="text-2xl font-bold">{course.credits}</p>
                 </div>
                 <BookOpen className="h-8 w-8 text-green-600" />
               </div>
@@ -132,8 +238,8 @@ export default function CourseDetails() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium ">Weeks</p>
-                  <p className="text-2xl font-bold ">
+                  <p className="text-sm font-medium">Weeks</p>
+                  <p className="text-2xl font-bold">
                     {course.weeklyContent.length}
                   </p>
                 </div>
@@ -146,8 +252,8 @@ export default function CourseDetails() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium ">Materials</p>
-                  <p className="text-2xl font-bold ">
+                  <p className="text-sm font-medium">Materials</p>
+                  <p className="text-2xl font-bold">
                     {course.uploadedFiles.length}
                   </p>
                 </div>
@@ -177,8 +283,8 @@ export default function CourseDetails() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <h4 className="font-medium  mb-2">Description</h4>
-                    <p className="">{course.description}</p>
+                    <h4 className="font-medium mb-2">Description</h4>
+                    <p>{course.description}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -200,7 +306,7 @@ export default function CourseDetails() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="">{course.objectives}</p>
+                  <p>{course.objectives}</p>
                 </CardContent>
               </Card>
             </div>
@@ -213,7 +319,7 @@ export default function CourseDetails() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="">{course.learningOutcomes}</p>
+                <p>{course.learningOutcomes}</p>
               </CardContent>
             </Card>
 
@@ -223,7 +329,7 @@ export default function CourseDetails() {
                   <CardTitle>Prerequisites & Requirements</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="">{course.requirements}</p>
+                  <p>{course.requirements}</p>
                 </CardContent>
               </Card>
             )}
@@ -249,15 +355,15 @@ export default function CourseDetails() {
                       </h4>
                       <div className="space-y-3">
                         <div>
-                          <h5 className="font-medium  mb-1">Topics</h5>
-                          <p className="">{week.topics}</p>
+                          <h5 className="font-medium mb-1">Topics</h5>
+                          <p>{week.topics}</p>
                         </div>
                         {week.studyMaterials && (
                           <div>
-                            <h5 className="font-medium  mb-1">
+                            <h5 className="font-medium mb-1">
                               Study Materials
                             </h5>
-                            <p className="">{week.studyMaterials}</p>
+                            <p>{week.studyMaterials}</p>
                           </div>
                         )}
                       </div>
@@ -277,7 +383,7 @@ export default function CourseDetails() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="">{course.assessmentMode}</p>
+                <p>{course.assessmentMode}</p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -296,15 +402,15 @@ export default function CourseDetails() {
                     {course.uploadedFiles.map((file, index) => (
                       <div
                         key={index}
-                        className="flex items-center p-3  rounded-lg"
+                        className="flex items-center p-3 rounded-lg"
                       >
-                        <FileText className="h-5 w-5  mr-3" />
-                        <span className="">{file}</span>
+                        <FileText className="h-5 w-5 mr-3" />
+                        <span>{file}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className=" text-center py-8">No materials uploaded yet</p>
+                  <p className="text-center py-8">No materials uploaded yet</p>
                 )}
               </CardContent>
             </Card>

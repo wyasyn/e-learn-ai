@@ -1,5 +1,5 @@
+import { DatabaseService } from "@/services/database";
 import { NextRequest, NextResponse } from "next/server";
-import { DatabaseService } from "@/lib/database";
 
 export async function GET(
   request: NextRequest,

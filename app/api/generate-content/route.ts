@@ -72,7 +72,7 @@ Always ensure content is:
 
     // Save to database
     const savedContent = await dbService.saveGeneratedContent({
-      courseId: new ObjectId(courseId),
+      courseId: ObjectId.createFromHexString(courseId),
       week: week,
       ...generatedContent,
       status: "generated",

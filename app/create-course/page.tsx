@@ -87,12 +87,50 @@ export default function CreateCourse() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
+
+      // Validate file types
+      const allowedTypes = [".ppt", ".pptx", ".pdf", ".doc", ".docx", ".txt"];
+      const invalidFiles = newFiles.filter((file) => {
+        const extension = file.name
+          .toLowerCase()
+          .substring(file.name.lastIndexOf("."));
+        return !allowedTypes.includes(extension);
+      });
+
+      if (invalidFiles.length > 0) {
+        toast.error(
+          `Invalid file types: ${invalidFiles.map((f) => f.name).join(", ")}`
+        );
+        return;
+      }
+
+      // Validate file sizes (10MB limit)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      const oversizedFiles = newFiles.filter((file) => file.size > maxSize);
+
+      if (oversizedFiles.length > 0) {
+        toast.error(
+          `Files too large (max 10MB): ${oversizedFiles
+            .map((f) => f.name)
+            .join(", ")}`
+        );
+        return;
+      }
+
       setUploadedFiles((prev) => [...prev, ...newFiles]);
     }
   };
 
   const removeFile = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -137,28 +175,40 @@ export default function CreateCourse() {
 
       const response = await fetch("/api/courses", {
         method: "POST",
-        headers: {
-          "user-id": "default-instructor", // Replace with actual user ID from auth
-        },
         body: formDataToSend,
+        // Note: No need to set user-id header anymore as we use session authentication
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create course");
+        throw new Error(errorData.error || "Failed to create course");
       }
 
       const result = await response.json();
 
-      toast.success("Course created successfully!");
+      // Show success message with file upload info
+      if (result.uploadErrors && result.uploadErrors.length > 0) {
+        toast.warning(result.message, {
+          description: `Upload errors: ${result.uploadErrors.join(", ")}`,
+        });
+      } else {
+        toast.success("Course created successfully!");
+      }
+
       router.push(`/course/${result.course._id}`);
     } catch (error) {
       console.error("Error creating course:", error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to create course. Please try again."
-      );
+
+      if (error instanceof Error) {
+        if (error.message.includes("Unauthorized")) {
+          toast.error("Please log in to create a course");
+          router.push("/login"); // Redirect to login page
+        } else {
+          toast.error(error.message);
+        }
+      } else {
+        toast.error("Failed to create course. Please try again.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -446,7 +496,7 @@ export default function CreateCourse() {
               <CardTitle>Upload Sample Materials</CardTitle>
               <CardDescription>
                 Upload any existing PowerPoints, quizzes, or other materials to
-                help AI generate better content
+                help AI generate better content (Max 10MB per file)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -455,6 +505,9 @@ export default function CreateCourse() {
                 <p className="text-sm  mb-2">
                   Upload PowerPoint presentations, PDFs, quizzes, or other
                   course materials
+                </p>
+                <p className="text-xs  mb-4">
+                  Supported formats: PPT, PPTX, PDF, DOC, DOCX, TXT
                 </p>
                 <input
                   aria-label="file upload"
@@ -486,11 +539,16 @@ export default function CreateCourse() {
                     {uploadedFiles.map((file, index) => (
                       <li
                         key={index}
-                        className="text-sm  flex items-center justify-between p-2  rounded"
+                        className="text-sm flex items-center justify-between p-3  rounded-lg"
                       >
-                        <div className="flex items-center">
-                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                          {file.name}
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-3 flex-shrink-0"></span>
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate font-medium">{file.name}</p>
+                            <p className="text-xs ">
+                              {formatFileSize(file.size)}
+                            </p>
+                          </div>
                         </div>
                         <Button
                           type="button"
@@ -498,6 +556,7 @@ export default function CreateCourse() {
                           size="sm"
                           onClick={() => removeFile(index)}
                           disabled={isSubmitting}
+                          className="ml-2 flex-shrink-0"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
