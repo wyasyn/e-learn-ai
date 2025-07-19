@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, BookOpen, Users, Brain, University } from "lucide-react";
+import { Plus, BookOpen, Users, Brain } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./mode-toogle";
@@ -17,6 +17,7 @@ import Logout from "./logoutBtn";
 import UserAvatar from "./user-avatar";
 import { authClient } from "@/lib/auth-client";
 import { WeeklyContent } from "@/models/Course";
+import Logo from "./logo";
 
 // Frontend-compatible Course type with string _id
 interface Course {
@@ -52,8 +53,9 @@ export default function DashboardHome() {
 
   useEffect(() => {
     // Redirect if not authenticated
-    if (session.data === null) {
-      router.push("/");
+
+    if (!session) {
+      router.push("/signin");
       return;
     }
 
@@ -61,7 +63,7 @@ export default function DashboardHome() {
     if (user?.id) {
       loadCourses();
     }
-  }, [session.data, user?.id, router]);
+  }, [session.data, user?.id, router, session]);
 
   const loadCourses = async () => {
     try {
@@ -107,9 +109,9 @@ export default function DashboardHome() {
       {/* Header */}
       <header className="shadow-sm bg-secondary/15">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-16 max-[400px]:flex-col max-[400px]:gap-3 max-[400px]:h-auto max-[400px]:py-4">
             <div className="flex items-center space-x-4">
-              <University className="h-8 w-8 text-blue-600" />
+              <Logo />
               <h1 className="text-xl font-semibold sr-only">EduPlatform</h1>
             </div>
             <div className="flex items-center space-x-4">

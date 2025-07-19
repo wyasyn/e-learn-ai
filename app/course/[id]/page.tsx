@@ -24,9 +24,10 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { getCloudinaryFilename } from "@/lib/utils";
 
 interface Course {
-  id: string;
+  _id: string;
   name: string;
   code: string;
   level: string;
@@ -88,6 +89,7 @@ export default function CourseDetails() {
 
         const data = await response.json();
         setCourse(data.course);
+
         setError(null);
       } catch (err) {
         console.error("Error fetching course:", err);
@@ -152,7 +154,7 @@ export default function CourseDetails() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-2">Error</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className=" mb-4">{error}</p>
           <Link href="/dashboard">
             <Button>Back to Dashboard</Button>
           </Link>
@@ -180,8 +182,8 @@ export default function CourseDetails() {
       {/* Header */}
       <header className="shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
+          <div className="flex items-center justify-between h-16 max-[630px]:flex-col max-[630px]:gap-3 max-[630]:h-auto py-3">
+            <div className="flex items-center space-x-4 max-[410px]:flex-col">
               <Link href="/dashboard">
                 <Button variant="ghost" size="sm">
                   <ArrowLeft className="h-4 w-4 mr-2" />
@@ -199,7 +201,7 @@ export default function CourseDetails() {
               >
                 {course.status}
               </Badge>
-              <Link href={`/course/${course.id}/content`}>
+              <Link href={`/course/${course._id}/content`}>
                 <Button>Manage Content</Button>
               </Link>
             </div>
@@ -402,10 +404,29 @@ export default function CourseDetails() {
                     {course.uploadedFiles.map((file, index) => (
                       <div
                         key={index}
-                        className="flex items-center p-3 rounded-lg"
+                        className="flex items-center p-3 rounded-lg "
                       >
-                        <FileText className="h-5 w-5 mr-3" />
-                        <span>{file}</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 48 48"
+                          width="48px"
+                          height="48px"
+                        >
+                          <path
+                            fill="#90CAF9"
+                            d="M40 45L8 45 8 3 30 3 40 13z"
+                          />
+                          <path fill="#E1F5FE" d="M38.5 14L29 14 29 4.5z" />
+                          <path
+                            fill="#1976D2"
+                            d="M16 21H33V23H16zM16 25H29V27H16zM16 29H33V31H16zM16 33H29V35H16z"
+                          />
+                        </svg>
+                        <Button asChild variant={"link"} className="">
+                          <Link className="truncate" href={file} download>
+                            {getCloudinaryFilename(file)}
+                          </Link>
+                        </Button>
                       </div>
                     ))}
                   </div>

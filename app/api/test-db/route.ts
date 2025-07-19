@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const db = await connectToDatabase();
+    const client = await connectToDatabase();
+    const db = client.db("study-buddy");
     const collections = await db.listCollections().toArray();
     return NextResponse.json({ collections });
   } catch (error) {

@@ -23,7 +23,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { signUp } from "@/server/users";
+import { signUp } from "@/services/users";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 

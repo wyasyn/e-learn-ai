@@ -3,15 +3,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const id = (await params).id;
+
     const { searchParams } = new URL(request.url);
     const week = searchParams.get("week");
 
     const dbService = DatabaseService.getInstance();
     const content = await dbService.getGeneratedContent(
-      params.id,
+      id,
       week ? parseInt(week) : undefined
     );
 

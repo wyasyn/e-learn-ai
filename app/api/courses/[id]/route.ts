@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const resolvedParams = await params;
     const dbService = DatabaseService.getInstance();
-    const course = await dbService.getCourseById(params.id);
+    const course = await dbService.getCourseById(resolvedParams.id);
 
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });

@@ -1,27 +1,57 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { connectToDatabase } from "@/lib/db";
 import { nextCookies } from "better-auth/next-js";
 
-// Create a function to initialize auth with the database connection
-async function createAuth() {
-  const client = await connectToDatabase();
-  const db = client.db("study-buddy");
-
-  return betterAuth({
-    emailAndPassword: {
-      enabled: true,
+// Initialize the auth configuration without database connection first
+const createAuthConfig = () => ({
+  emailAndPassword: {
+    enabled: true,
+  },
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
     },
-    socialProviders: {
-      google: {
-        clientId: process.env.GOOGLE_CLIENT_ID as string,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
-      },
-    },
-    database: mongodbAdapter(db),
-    plugins: [nextCookies()],
-  });
-}
+  },
+  plugins: [nextCookies()],
+});
 
-// Export the auth instance
-export const auth = await createAuth();
+// Create a singleton auth instance
+let authInstance: any = null;
+
+const getAuthInstance = async () => {
+  if (!authInstance) {
+    const client = await connectToDatabase();
+    const db = client.db("study-buddy");
+
+    authInstance = betterAuth({
+      ...createAuthConfig(),
+      database: mongodbAdapter(db),
+    });
+  }
+  return authInstance;
+};
+
+// Create auth instance immediately with promise
+const authPromise = getAuthInstance();
+
+// Export the auth object
+export const auth = {
+  handler: authPromise.then((instance) => instance.handler),
+  api: {
+    getSession: async (options: any) => {
+      const instance = await authPromise;
+      return instance.api.getSession(options);
+    },
+    signInEmail: async (options: any) => {
+      const instance = await authPromise;
+      return instance.api.signInEmail(options);
+    },
+    signUpEmail: async (options: any) => {
+      const instance = await authPromise;
+      return instance.api.signUpEmail(options);
+    },
+  },
+};
