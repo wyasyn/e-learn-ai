@@ -15,7 +15,7 @@ export default function Navbar() {
       className="flex items-center justify-between px-6 py-4 backdrop-blur-sm border-b border-white/10"
     >
       <Link href="/" className="flex items-center space-x-2">
-        <Logo className="invert" />
+        <Logo />
       </Link>
 
       <div className="hidden md:flex items-center space-x-4">
