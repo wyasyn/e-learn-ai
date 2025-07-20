@@ -18,7 +18,7 @@ export function ImageCarousel() {
       setCurrentIndex((prevIndex) =>
         prevIndex === carouselImages.length - 1 ? 0 : prevIndex + 1
       );
-    }, 7000);
+    }, 4500);
 
     return () => clearInterval(interval);
   }, []);
